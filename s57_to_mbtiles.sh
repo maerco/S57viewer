@@ -51,12 +51,13 @@ GEOJSON_FILES=()
 for layer in "${LAYERS[@]}"; do
   out="${layer}.geojson"
   if ogr2ogr -f GeoJSON -t_srs EPSG:4326 \
-      -where "1=1" \
       "${out}" "${S57_FILE}" "${layer}" 2>/dev/null; then
-    # Scarta file vuoti (layer non presenti in questa cella)
-    if [ -s "${out}" ] && grep -q '"features": \[.\+' "${out}" 2>/dev/null; then
+    # Scarta file vuoti (layer non presenti in questa cella):
+    # conta le occorrenze di "type": "Feature" nel file (funziona anche multi-riga)
+    feature_count=$(grep -c '"type": "Feature"' "${out}" 2>/dev/null || echo 0)
+    if [ -s "${out}" ] && [ "${feature_count}" -gt 0 ]; then
       GEOJSON_FILES+=("${out}")
-      echo "    OK: ${layer}"
+      echo "    OK: ${layer} (${feature_count} feature)"
     else
       rm -f "${out}"
     fi
@@ -70,17 +71,19 @@ fi
 
 echo "==> Generazione MBTiles con tippecanoe"
 cd - > /dev/null
+
+TIPPECANOE_ARGS=()
+for f in "${GEOJSON_FILES[@]}"; do
+  layer_name=$(basename "${f}" .geojson | tr '[:upper:]' '[:lower:]')
+  TIPPECANOE_ARGS+=(-L "${layer_name}:${WORKDIR}/${f}")
+done
+
 tippecanoe -o "${OUT_MBTILES}" \
   --force \
   -zg \
   --drop-densest-as-needed \
   --extend-zooms-if-still-dropping \
-  -L depare:"${WORKDIR}/DEPARE.geojson" \
-  -L depcnt:"${WORKDIR}/DEPCNT.geojson" \
-  -L soundg:"${WORKDIR}/SOUNDG.geojson" \
-  -L lndare:"${WORKDIR}/LNDARE.geojson" \
-  -L coalne:"${WORKDIR}/COALNE.geojson" \
-  2>/dev/null || echo "Nota: alcuni layer potrebbero mancare per questa cella, normale."
+  "${TIPPECANOE_ARGS[@]}"
 
 echo "==> Fatto: ${OUT_MBTILES}"
 ls -lh "${OUT_MBTILES}"
