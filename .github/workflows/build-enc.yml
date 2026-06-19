@@ -1,0 +1,40 @@
+name: Build ENC MBTiles (test)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cell:
+        description: 'Codice cella ENC NOAA (es. US5CA72M)'
+        required: true
+        default: 'US5CA72M'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Installa GDAL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gdal-bin unzip
+
+      - name: Installa tippecanoe
+        run: |
+          sudo apt-get install -y -qq build-essential libsqlite3-dev zlib1g-dev
+          git clone --depth 1 https://github.com/felt/tippecanoe.git
+          cd tippecanoe
+          make -j"$(nproc)"
+          sudo make install
+
+      - name: Esegui pipeline conversione
+        run: |
+          chmod +x s57_to_mbtiles.sh
+          ./s57_to_mbtiles.sh "${{ github.event.inputs.cell }}"
+
+      - name: Carica MBTiles come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbtiles-${{ github.event.inputs.cell }}
+          path: output/*.mbtiles
